@@ -1,0 +1,19 @@
+{
+  "name": "pamukshoes-ai-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pamuk's Shoes icin moduler AI destekli satis backend'i",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "check": "node --check src/server.js && node --check src/routes/api.js && node --check src/routes/whatsapp.js && node --check src/lib/openai-client.js && node --check src/lib/product-utils.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "multer": "^2.0.2",
+    "openai": "^4.104.0"
+  }
+}
