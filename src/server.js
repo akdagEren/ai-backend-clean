@@ -7,6 +7,7 @@ const cors = require("cors");
 const { RollingMemoryStore } = require("./lib/memory-store");
 const { createApiRouter } = require("./routes/api");
 const { createWhatsAppRouter } = require("./routes/whatsapp");
+const { hydrateProducts } = require("./lib/product-utils");
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -32,9 +33,15 @@ app.get("/", (req, res) => {
   });
 });
 
-app.use("/api", createApiRouter(memoryStore));
-app.use("/whatsapp", createWhatsAppRouter(memoryStore));
+async function startServer() {
+  await hydrateProducts();
+  app.use("/api", createApiRouter(memoryStore));
+  app.use("/whatsapp", createWhatsAppRouter(memoryStore));
+  app.listen(port, () => {
+    console.log(`AI backend aktif: http://localhost:${port}`);
+  });
+}
 
-app.listen(port, () => {
-  console.log(`AI backend aktif: http://localhost:${port}`);
+startServer().catch((error) => {
+  console.error("Sunucu başlatılamadı:", error);
 });

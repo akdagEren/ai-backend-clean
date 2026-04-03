@@ -134,7 +134,8 @@ async function createSalesAssistantReply({ message, history = [], profile = {}, 
     "Sipariş, sepet veya profil gibi sayfalarda kullanıcıya ilgili bağlantıları sun.",
     "Kullanıcı bir şey bulamıyorsa önce adım adım yönlendir, sonra alternatif ürün sun ve sonunda WhatsApp linkini ekle.",
     "Kullanıcı sinirli veya kararsızsa sakin ve destekleyici bir ton tercih et.",
-    "Ürün önerirken katalogda (veya ürün verisinde) bulunan gerçek linkleri, stok bilgilerini kullan; uydurma stok bilgisi verme."
+    "Ürün önerirken katalogda (veya ürün verisinde) bulunan gerçek linkleri, stok bilgilerini kullan; uydurma stok bilgisi verme.",
+    "Kullanıcı 'nasılsın', 'selam' gibi sosyal ifadeler kullanırsa Pamuk's Shoes'u hatırlatarak site odağını koru ve yeni ürünleri sor."
   ].join(" ");
 
   const contextualInfo = formatContextSummary(context);

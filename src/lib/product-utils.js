@@ -1,4 +1,5 @@
-const { products } = require("../data/products");
+const { products: staticProducts } = require("../data/products");
+const { fetchProducts } = require("./db-client");
 
 const turkishMap = {
   ç: "c",
@@ -8,6 +9,8 @@ const turkishMap = {
   ş: "s",
   ü: "u"
 };
+
+let cachedProducts = staticProducts.slice();
 
 function normalizeText(value) {
   return String(value || "")
@@ -23,6 +26,18 @@ function tokenize(value) {
   return normalizeText(value).split(" ").filter(Boolean);
 }
 
+function parseSizeStock(raw) {
+  if (!raw) return [];
+  return String(raw)
+    .split(",")
+    .map((section) => section.split(":"))
+    .filter((parts) => parts.length === 2)
+    .map(([size, stock]) => ({
+      size: size.trim(),
+      stock: Number(stock.trim()) || 0
+    }));
+}
+
 function getCorpus(product) {
   return [
     product.name,
@@ -30,9 +45,9 @@ function getCorpus(product) {
     product.color,
     product.style,
     product.category,
-    product.usage.join(" "),
-    product.season.join(" "),
-    product.tags.join(" ")
+    (product.usage || []).join(" "),
+    (product.season || []).join(" "),
+    (product.tags || []).join(" ")
   ]
     .join(" ")
     .trim();
@@ -43,16 +58,17 @@ function stockForSize(product, size) {
   if (!normalizedSize) {
     return 0;
   }
-  return Number(product.stockBySize[normalizedSize] || 0);
+  return Number((product.stockBySize || {})[normalizedSize] || 0);
 }
 
 function availabilityNote(product, size) {
+  const sizes = Array.isArray(product.availableSizes) ? product.availableSizes : [];
   if (!size) {
-    return `${product.availableSizes.join(", ")} numaralari mevcut.`;
+    return sizes.length ? `${sizes.join(", ")} numaraları mevcut.` : "Numara bilgisi mevcut değil.";
   }
   return stockForSize(product, size) > 0
-    ? `${size} numara mevcut.`
-    : `${size} numara su an stokta gorunmuyor.`;
+    ? `${size} numara stokta.`
+    : `${size} numara şu an stokta görünmüyor.`;
 }
 
 function scoreProduct(product, query) {
@@ -70,10 +86,10 @@ function scoreProduct(product, query) {
     if (normalizeText(product.color) === term) {
       score += 5;
     }
-    if (product.usage.some((usage) => normalizeText(usage) === term)) {
+    if ((product.usage || []).some((usage) => normalizeText(usage) === term)) {
       score += 4;
     }
-    if (product.tags.some((tag) => normalizeText(tag) === term)) {
+    if ((product.tags || []).some((tag) => normalizeText(tag) === term)) {
       score += 2;
     }
   });
@@ -81,9 +97,62 @@ function scoreProduct(product, query) {
   return score;
 }
 
+function getProducts() {
+  return cachedProducts;
+}
+
+async function hydrateProducts() {
+  try {
+    const rows = await fetchProducts();
+    if (!rows.length) {
+      return getProducts();
+    }
+    cachedProducts = rows.map(transformRow);
+  } catch (error) {
+    console.error("Ürün veritabanı yüklenemedi:", error);
+  }
+  return getProducts();
+}
+
+function transformRow(row) {
+  const categories = String(row.categories || "")
+    .split(",")
+    .map((item) => item.trim().toLocaleLowerCase("tr-TR"))
+    .filter(Boolean);
+
+  const sizeStocks = parseSizeStock(row.size_stocks);
+  const availableSizes = sizeStocks.map((entry) => entry.size);
+  const stockBySize = sizeStocks.reduce((acc, entry) => {
+    acc[entry.size] = entry.stock;
+    return acc;
+  }, {});
+
+  const style = categories.find((cat) => /sik|klasik|bot|spor/.test(cat)) || "gunluk";
+
+  const usage = categories.includes("sik") ? ["sik"] : ["gunluk"];
+
+  return {
+    id: String(row.id),
+    name: row.name || "Pamuk's Shoes Ürünü",
+    price: Number(row.price || 0),
+    color: row.color || "karışık",
+    style: style,
+    usage,
+    season: ["tum-mevsim"],
+    category: categories[0] || "ayakkabi",
+    footProfile: "standart",
+    description: row.description || "",
+    tags: categories,
+    availableSizes,
+    stockBySize,
+    link: "urun-detay.php?id=" + row.id,
+    image: row.main_image || ""
+  };
+}
+
 function filterProducts({ style, color, usage, q }) {
   const query = [style, color, usage, q].filter(Boolean).join(" ");
-  return products
+  return getProducts()
     .map((product) => ({
       ...product,
       score: scoreProduct(product, query)
@@ -103,11 +172,14 @@ function searchProducts(q) {
 function findProductByName(name) {
   const normalized = normalizeText(name);
   const terms = tokenize(name);
-  return products.find((product) => {
+  const list = getProducts();
+  return list.find((product) => {
     const productName = normalizeText(product.name);
-    return productName.includes(normalized)
-      || normalized.includes(productName)
-      || terms.some((term) => productName.includes(term));
+    return (
+      productName.includes(normalized) ||
+      normalized.includes(productName) ||
+      terms.some((term) => productName.includes(term))
+    );
   });
 }
 
@@ -126,37 +198,38 @@ function getSizeAdvice({ footSize, footWidth, previousBrand, productName }) {
 
   if (brand.includes("nike")) {
     recommended -= 0.5;
-    notes.push("Nike kalibi referans alindi; bu koleksiyonda yarim numara daha dengeli olabilir.");
+    notes.push("Nike kalıbı referans alındı; bu koleksiyonda yarım numara daha dengeli olabilir.");
   }
   if (brand.includes("adidas")) {
-    notes.push("Adidas referansi genel olarak benzer kalipta gorunuyor.");
+    notes.push("Adidas referansı genel olarak benzer kalıpta görünüyor.");
   }
   if (width === "genis") {
     recommended += 0.5;
-    notes.push("Genis ayakta on kisim baskisini azaltmak icin yarim numara buyutme onerildi.");
+    notes.push("Geniş ayakta ön kısmı rahatlatmak için yarım numara büyütme önerildi.");
   }
   if (width === "dar") {
-    notes.push("Dar ayakta kendi numaranizla baslamak daha dogru olur.");
+    notes.push("Dar ayakta kendi numaranızla başlamak daha doğru olur.");
   }
   if (product && product.footProfile === "dar" && width === "genis") {
     recommended += 0.5;
-    notes.push(`${product.name} kalibi daha dar oldugu icin ek alan birakildi.`);
+    notes.push(`${product.name} kalıbı daha dar olduğu için ek alan bırakıldı.`);
   }
   if (product && product.footProfile === "genis" && width === "dar") {
     recommended -= 0.5;
-    notes.push(`${product.name} daha rahat kalipli; ayakta bosluk olusmamasi icin yarim numara kucultuldu.`);
+    notes.push(`${product.name} daha rahat kalıplı; ayakta boşluk olmaması için yarım numara küçültüldü.`);
   }
 
   const rounded = Number.isInteger(recommended) ? String(recommended) : recommended.toFixed(1).replace(".0", "");
 
   return {
     recommended_size: rounded,
-    note: notes.join(" ") || "Standart kalip varsayimi ile mevcut numaraniz onerildi."
+    note: notes.join(" ") || "Standart kalıp varsayımı ile mevcut numaranız önerildi."
   };
 }
 
 module.exports = {
-  products,
+  hydrateProducts,
+  getProducts,
   normalizeText,
   tokenize,
   recommendProducts,
