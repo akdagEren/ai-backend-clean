@@ -17,7 +17,7 @@ const {
 
 function createApiRouter(memoryStore) {
   const router = express.Router();
-  const upload = multer({ dest: path.join(process.cwd(), "ai-backend", "tmp") });
+  const upload = multer({ dest: path.join(process.cwd(), "tmp") });
 
   router.get("/health", (req, res) => {
     res.json({ ok: true, product_count: products.length });

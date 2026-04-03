@@ -12,7 +12,7 @@ const { hydrateProducts } = require("./lib/product-utils");
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const memoryStore = new RollingMemoryStore(3);
-const tmpDir = path.join(process.cwd(), "ai-backend", "tmp");
+const tmpDir = path.join(process.cwd(), "tmp");
 
 if (!fs.existsSync(tmpDir)) {
   fs.mkdirSync(tmpDir, { recursive: true });
